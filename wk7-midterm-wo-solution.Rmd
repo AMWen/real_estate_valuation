@@ -1,0 +1,42 @@
+---
+title: "CSCI E-63C: Week 7 -- Midterm Exam"
+output:
+  html_document:
+    toc: true
+---
+
+# Introduction
+
+*The goal of the midterm exam is to apply some of the methods for supervised and unsupervised analysis covered in our course by now to a new dataset.  We will work with the data characterizing real estate valuation in New Taipei City, Taiwan that is available at [UCI ML repository](https://archive.ics.uci.edu/ml/datasets/Real+estate+valuation+data+set) as well as at this course website on canvas. The overall goal will be to use data modeling approaches to understand which attributes available in the dataset influence real estate valuation the most.  The outcome attribute (Y -- house price of unit area) is inherently continuous, therefore representing a regression problem.*
+
+*For more details please see dataset description available at UCI ML or corresponding [HTML file](https://canvas.harvard.edu/files/7587359/download?download_frd=1) in this course website on canvas.  For simplicity, clarity and to decrease your dependency on the network reliability and UCI ML or canvas website availability during the week that you will be working on this project you are advised to download data made available in this course canvas website to your local folder and work with this local copy. The dataset at UCI ML repository as well as its copy on our course canvas website is made available as an Excel file [Real estate valuation data set.xlsx](https://canvas.harvard.edu/files/7587360/download?download_frd=1) -- you can either use `read_excel` method from R package `readxl` to read this Excel file directly or convert it to comma or tab-delimited format in Excel so that you can use `read.table` on the resulting file with suitable parameters (and, of course, remember to double check that in the end what you have read into your R environment is what the original Excel file contains).*
+
+*Finally, as you will notice, the instructions here are terser than in the previous weekly problem sets. We expect that you use what you've learned in the class to complete the analysis and draw appropriate conclusions based on the data.  The approaches that you are expected to apply here have been exercised in the preceeding weeks -- please feel free to consult your submissions and/or official solutions as to how they have been applied to different datasets.  As always, if something appears to be unclear, please ask questions -- we may change to private mode those that in our opinion reveal too many details as we see fit.*
+
+# Sub-problem 1: load and summarize the data (25 points)
+
+*Download and read in the data, produce numerical and graphical summaries of the dataset attributes, decide whether they can be used for modeling in untransformed form or any transformations are justified, comment on correlation structure and whether some of the predictors suggest relationship with the outcome. Plot observations in the dataset in the space of the first two principal components.  Discuss relationships between dataset attributes and each of the first two principal components.*
+
+# Sub-problem 2: multivariate linear model (25 points)
+
+*Using function `lm` fit model of outcome as linear function of all predictors in the dataset. Present and discuss diagnostic plots. Report 99% confidence intervals for model parameters that are statistically significantly associated with the outcome and discuss directions of those associations. Obtain mean prediction (and corresponding 90% confidence interval) for a new observation with each attribute set to average of the observations in the dataset. Describe evidence for potential collinearity among predictors in the model.*
+
+# Sub-problem 3: choose optimal models by exhaustive, forward and backward selection (15 points)
+
+*Use `regsubsets` from library `leaps` to choose optimal set of variables for modeling real estate valuation and describe differences and similarities between attributes deemed most important by these approaches.*
+
+# Sub-problem 4: optimal model by cross-validation (20 points)
+
+*Use cross-validation (or any other resampling strategy of your choice) to estimate test error for models with different numbers of variables.  Compare and comment on the number of variables deemed optimal by resampling versus those selected by `regsubsets` in the previous task.*
+
+# Sub-problem 5: variable selection by lasso (15 points)
+
+*Use regularized approach (i.e. lasso) to model property valuation.  Compare resulting models (in terms of number of variables and their effects) to those selected in the previous two tasks (by `regsubsets` and resampling), comment on differences and similarities among them.*
+
+# Extra points problem: using higher order terms (5 points)
+
+*Evaluate the impact of adding non-linear terms to the model.  Describe which terms, if any, warrant addition to the model and what is the evidence supporting their inclusion as well as the effect of their incorporation on model coefficients and error.*
+
+# Extra points problem: using clusters instead of latitude/longitude (15 points)
+
+*From the inspection of latitude and longitude attributes of this dataset you may have already noticed that they are distributed fairly unevenly (likely reflecting population density in the area represented by this data).  Consequently, one may argue that using these two attributes as continuous predictors for the purposes of modeling is poorly justified and the resulting corresponding model coefficients are hardly indicative of change in property valuation with one unit of change in latitude/longitude values.  This extra points problem invites you to use K-means clustering in the space of these two attributes to assign observations to progressively increasing number of clusters, use resulting cluster id as a factor attribute for the purposes of modeling instead of actual longitude/latitude coordinates and evaluate the impact of this transformation on model performance metrics.  Compare this approach to the stratification by district employed in [Ye & Hsu, 2018](https://canvas.harvard.edu/files/7587373/download?download_frd=1) available at our course website in canvas.*

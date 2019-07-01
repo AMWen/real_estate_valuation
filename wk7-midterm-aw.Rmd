@@ -1,0 +1,405 @@
+---
+title: "CSCI E-63C: Week 7 -- Midterm Exam"
+author: "Amy Wen"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(readxl)
+library(car)
+library(leaps)
+library(ggplot2)
+library(glmnet)
+library(tidyr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Sub-problem 1: load and summarize the data (25 points)
+
+*Download and read in the data, produce numerical and graphical summaries of the dataset attributes, decide whether they can be used for modeling in untransformed form or any transformations are justified, comment on correlation structure and whether some of the predictors suggest relationship with the outcome. Plot observations in the dataset in the space of the first two principal components.  Discuss relationships between dataset attributes and each of the first two principal components.*
+
+<span style="color:blue">Numerical summaries of the dataset attributes are given below. Graphical summaries with histograms showing their individual distributions and pairwise scatterplots showing their pairwise distributions are also shown.</span>
+
+<span style="color:blue">Most of the variables can be used for modeling in untransformed form. Transaction date and house age seem to be generally uniformly distributed, and latititude seem to be generally normally distributed. Distance to nearest MRT station and number of convenience stores look to be more exponentially distributed and when compared against the outcome seems to have more spread at lower values, so log transformation of those variables would be justified. We may also want to log transform house price of unit area to reduce the effect of the particularly expensive house outlier. Longitude is left-skewed and has a strange relationship with the other variables (forming a mountain or checkmark shape), so it might require a more complex transformation for use in a linear model fit.</span>
+
+<span style="color:blue">Distance to nearest MRT station has a fairly strong negative correlation with number of convenience stores, longitude, and latitude, which themselves are positively correlated with each other. The relationship between distance to nearest MRT station and longitude is especially apparent, with an almost straight line going down until around a longitude of 121.54 when the line abruptly changes to a positive slope.</span>
+
+<span style="color:blue">There are general weak trends of increasing price with more recent transaction dates and lower house ages, but the variability is quite high in comparison to the slope. There is a stronger negative correlation between price and distance to nearest MRT station, as well as stronger positive correlations when price is compared against the remaining predictors (number of convenience stores, latitude, and longitude).</span>
+
+<span style="color:blue">A biplot of the first two principal components of the dataset predictors is shown below. Only the predictors were analyzed because the goal is to create a regression model to predict the price. PCA was performed with scaled data to account for the fact that the units of the attributes are drastically different. Two different clusters become very apparent, with a cutoff PC1 of around 0.75. From the rotation matrix and the biplot, the first principal component is primarily composed of distance to the nearest MRT station but also strongly influenced number of convenience stores, latitude, and longitude (in the opposite direction). This matches what we found above regarding how they are correlated with each other. On the other hand, the second principal component is primarily composed of house age, but it is also influenced by transaction date to a similar extent.</span>
+
+```{r loadData}
+# Read in the data
+houseData = read_excel("Real estate valuation data set.xlsx")
+
+# Look at data
+head(houseData) # 6 explanantory variables (X1-X6) and 1 outcome (Y)
+summary(houseData)
+
+# Rearrange so first column is outcome
+houseData[1] = houseData[8]
+names(houseData)[1] = names(houseData)[8]
+houseData = houseData[-8]
+
+# Plot histograms of the attributes
+old.par <- par(mfrow=c(3,3))
+for ( i.var in 1:ncol(houseData) )  {
+  hist(houseData[[i.var]],xlab=names(houseData)[i.var], main="")
+}
+par(old.par)
+
+# Calculate correlations between pairwise continuous attributes
+pearson.cor <- function(x, y, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  pearson <- signif(cor(x, y, method = "pearson"),2)
+  txt <- paste0(pearson)
+  text(0.5, 0.5, txt)
+}
+
+# Plot data pairwise and their correlations
+pairs(houseData[1:ncol(houseData)], lower.panel = pearson.cor, gap=1/5, pch=16, cex=0.4)
+
+### PCA of predictor attributes
+PC = prcomp(houseData[2:ncol(houseData)], scal=TRUE) # Scale data
+
+# plot(PC) # Scree plot
+biplot(PC, cex=0.5) # Plot of the two first principal components
+
+# Attributes with largest loadings for the first and second principal components
+PCA1 = sort(abs(PC$rotation[,1]))[ncol(houseData)-1]; PCA1 # Distance to nearest MRT station
+PCA2 = sort(abs(PC$rotation[,2]))[ncol(houseData)-1]; PCA2 # House age
+```
+
+# Sub-problem 2: multivariate linear model (25 points)
+
+*Using function `lm` fit model of outcome as linear function of all predictors in the dataset. Present and discuss diagnostic plots. Report 99% confidence intervals for model parameters that are statistically significantly associated with the outcome and discuss directions of those associations. Obtain mean prediction (and corresponding 90% confidence interval) for a new observation with each attribute set to average of the observations in the dataset. Describe evidence for potential collinearity among predictors in the model.*
+
+<span style="color:blue">Linear fit of outcome as a function of all the predictors is performed below and the diagnostic plots shown. Some heteroskedasticity is observed from the residuals vs. fitted plot, with higher residuals observed especially in the 40-50 ranged of fitted values, with point 271 having a much higher residual than the others. We also see what appears to be two main clusters below and above fitted values of 20 for the price per unit area. From the normal qq plot, we see there is some evidence of non-normality due to the points not fitting the line at either end, with point 114 being unusual on the low end and 271 being unusual on the high end. The scale-location plot looks to be a fairly straight line across, and we again observe 271 having a particularly high residual. The residuals vs. leverage plot has all points within the threshold Cook's distance. We do observe quite a few points with particularly high leverage but small residuals, and not surprisingly points 114 and 271 stand out in terms of residual values.</span>
+
+<span style="color:blue">Since distance to the nearest MRT station, number of convenience stores, and price of unit area were identified as potentially benefitting from log transformations in sub-problem 1, a linear fit with log transformed variables was also performed (took log of (attribute+1) to account for 0's in the data). Histograms of the log transformations show that price of unit area and distance to the nearest MRT station benefitted more from the transformations than number of convenience stores. Pairwise scatterplots of the 3 variables show more of a linear trend than previously observed between price of unit area and distance to the nearest MRT station. The linear fit has a better $R^2$ value than previously. The diagnostic plots are similar compared to previously, except 114 has the more extreme residual and 271 less so. There are some improvements that can be observed as well. Even though there is still some non-normality to the residuals, the spread and the extremeness of the residuals are slightly better. The high leverage points are have slightly reduced leverages.</span>
+
+<span style="color:blue">The 99% confidence intervals for the model parameters were found for both the untransformed and transformed variables (shown below). There is a positive association of price with transaction date, number of convenience stores (only for untransformed; not significant at 99% for transformed), latitude, and longitude (only for transformed; not significant at 99% for untransformed), but a negative association with house age and distance to nearest MRT station. These results are pretty much as expected based on their pairwise correlations with price above.</span>
+
+<span style="color:blue">The mean prediction with corresponding 90% confidence interval using original data and average observations for each attribute is: 37.98019 and (23.36002, 52.60037). With the log-transformed data, the values are very similar after transforming back, with a mean of 35.48386 and a smaller 90% confidence interval of (25.23111, 49.74403).</span>
+
+<span style="color:blue">We have several pieces of evidence for potential collinearity among predictors in the model. From sub-problem 1, there was high pairwise correlations between some of the variables. Even though longitude was statistically significantly related to price in the log-transformed model, it was not at all deemed important with the untransformed variables (p-value of 0.798). Also, if we look at the VIFs of the variables, we observe VIFs above 2 for distance to the nearest MRT station (4.3) and longitude (2.9). Although these VIF values are not super high, they do indicate some collinearity among the predictors.</span>
+
+```{r linearModel}
+# Linear fit as function of all predictors
+houseFit = lm(houseData)
+summary(houseFit)
+
+# Diagnostic plots
+old.par <- par(mfrow=c(2,2))
+plot(houseFit) # Diagnostic plots
+par(old.par)
+
+# Log transform some variables
+houseDataLog = houseData
+houseDataLog[1]=log(houseData[1]+1) # House price of unit area (outcome)
+houseDataLog[4]=log(houseData[4]+1) # Distance to nearest MRT station
+houseDataLog[5]=log(houseData[5]+1) # Number of convenience stores
+
+# Look at effect of log transformation
+# Plot histograms of the attributes
+old.par <- par(mfrow=c(1,3))
+for ( i.var in c(1,4,5) )  {
+  hist(houseDataLog[[i.var]],xlab=names(houseData)[i.var], main="")
+}
+par(old.par)
+
+# Plot pairwise distribution of log-transformed variables
+pairs(houseDataLog[c(1,4,5)], lower.panel = pearson.cor, gap=1/5, pch=16, cex=0.4)
+
+# Linear fit with log transform of some of the predictors
+houseFitLog = lm(houseDataLog)
+summary(houseFitLog)
+
+# Diagnostic plots for log-transformed plots
+old.par <- par(mfrow=c(2,2))
+plot(houseFitLog) # Diagnostic plots
+par(old.par)
+
+# 99% confidence intervals for model parameters (untrasformed and log-transformed model)
+confint(houseFit, level=0.99)
+confint(houseFitLog, level=0.99)
+
+# Mean prediction and corresponding 90% confidence interval (untransformed model)
+means = houseData[1,] # Initialize tibble with first row of houseData
+for ( i.var in 1:ncol(houseData) )  {
+  means[[i.var]] = mean(houseData[[i.var]]) # Populate with average observations
+}
+predict(houseFit, newdata=means[-1], interval="prediction", level=0.9)
+
+# Mean prediction and corresponding 90% confidence interval (log-transformed model)
+meansLog = houseDataLog[1,] # Initialize tibble with first row of houseData
+for ( i.var in 1:ncol(houseData) )  {
+  meansLog[[i.var]] = mean(houseDataLog[[i.var]]) # Populate with average observations
+}
+exp(predict(houseFitLog, newdata=meansLog[-1], interval="prediction", level=0.9))-1 # Transform back
+
+# Evidence of potential collinearity among predictors
+vif(houseFit) # Variance inflation factor
+vif(houseFitLog)
+```
+
+
+# Sub-problem 3: choose optimal models by exhaustive, forward and backward selection (15 points)
+
+*Use `regsubsets` from library `leaps` to choose optimal set of variables for modeling real estate valuation and describe differences and similarities between attributes deemed most important by these approaches.*
+
+<span style="color:blue">Results from exhaustive, forward, and backward selection were all consistent with each other regardless of whether using untransformed or log-transformed variables. Based on bic and cp values, we reach a minimum with 5 variables: distance to MRT station, number of convenience stores, house age, latitude, and transaction date. For log-transformed variables a minimum is reached with 5 variables based on bic and all 6 variables based on cp, where are in order of importance: distance to MRT station, latitude, house age, transaction date, longitude, and number of convenience stores.</span>
+
+```{r subsetSelection}
+# Exhaustive, forward, and backward selection
+# Use `regsubsets` to choose optimal set of variables for modeling real estate valuation
+summaryMetrics <- NULL
+whichAll <- list()
+Methods <- c("exhaustive", "backward", "forward")
+houseData = data.frame(houseData)
+for ( myMthd in Methods ) {
+  rsRes <- regsubsets(Y.house.price.of.unit.area~., houseData, method=myMthd)
+  summRes <- summary(rsRes)
+  whichAll[[myMthd]] <- summRes$which
+  for ( metricName in c("rsq","rss","adjr2","cp","bic") ) {
+    summaryMetrics <- rbind(summaryMetrics,
+                            data.frame(method=myMthd,metric=metricName,
+                                       nvars=1:length(summRes[[metricName]]),
+                                       value=summRes[[metricName]]))
+  }
+}
+
+# Plot model metrics (rsq, rss, etc.) 
+ggplot(summaryMetrics,aes(x=nvars,y=value,shape=method,colour=method)) + geom_path() + geom_point() + facet_wrap(~metric,scales="free") +   theme(legend.position="top")
+
+# Plot which variables are included in the models
+old.par <- par(mfrow=c(2,2),ps=16,mar=c(5,7,2,1))
+for ( myMthd in names(whichAll) ) {
+  image(1:nrow(whichAll[[myMthd]]),
+        1:ncol(whichAll[[myMthd]]),
+        whichAll[[myMthd]],xlab="N(vars)",ylab="",
+        xaxt="n",yaxt="n",breaks=c(-0.5,0.5,1.5),
+        col=c("white","gray"),main=myMthd)
+  axis(1,1:nrow(whichAll[[myMthd]]),rownames(whichAll[[myMthd]]))
+  axis(2,1:ncol(whichAll[[myMthd]]),colnames(whichAll[[myMthd]]),las=2)
+}
+par(old.par)
+
+## Do the same for log transformed variables
+# Use `regsubsets` to choose optimal set of variables for modeling real estate valuation
+summaryMetricsLog <- NULL
+whichAllLog <- list()
+houseDataLog = data.frame(houseDataLog)
+for ( myMthd in Methods ) {
+  rsResLog <- regsubsets(Y.house.price.of.unit.area~., houseDataLog, method=myMthd)
+  summResLog <- summary(rsResLog)
+  whichAllLog[[myMthd]] <- summResLog$which
+  for ( metricName in c("rsq","rss","adjr2","cp","bic") ) {
+    summaryMetricsLog <- rbind(summaryMetricsLog,
+                            data.frame(method=myMthd,metric=metricName,
+                                       nvars=1:length(summResLog[[metricName]]),
+                                       value=summResLog[[metricName]]))
+  }
+}
+
+# Plot model metrics (rsq, rss, etc.) 
+ggplot(summaryMetricsLog,aes(x=nvars,y=value,shape=method,colour=method)) + geom_path() + geom_point() + facet_wrap(~metric,scales="free") +   theme(legend.position="top")
+
+# Plot which variables are included in the models
+old.par <- par(mfrow=c(2,2),ps=16,mar=c(5,7,2,1))
+for ( myMthd in names(whichAllLog) ) {
+  image(1:nrow(whichAllLog[[myMthd]]),
+        1:ncol(whichAllLog[[myMthd]]),
+        whichAllLog[[myMthd]],xlab="N(vars)",ylab="",
+        xaxt="n",yaxt="n",breaks=c(-0.5,0.5,1.5),
+        col=c("white","gray"),main=myMthd)
+  axis(1,1:nrow(whichAllLog[[myMthd]]),rownames(whichAllLog[[myMthd]]))
+  axis(2,1:ncol(whichAllLog[[myMthd]]),colnames(whichAllLog[[myMthd]]),las=2)
+}
+par(old.par)
+
+```
+
+
+# Sub-problem 4: optimal model by cross-validation (20 points)
+
+*Use cross-validation (or any other resampling strategy of your choice) to estimate test error for models with different numbers of variables.  Compare and comment on the number of variables deemed optimal by resampling versus those selected by `regsubsets` in the previous task.*
+
+<span style="color:blue">Cross-validation to estimate test error for models with different numbers of variables is performed below. Since the subsets for each selection method was the same, not surprisngly no differences were found between the different methods. The testing mse only marginally improves with additional variables after 4 variables, both for untransformed and log-transformed data, so we find that around 4-5 variables is deemed optimal using cross-validation, which is similar to the ~5 variables selected by `regsubsets` previously.</span>
+
+```{r CV, fig.height=3}
+# Crossvalidation function from lecture
+xval = function (x, data, N.xval=5, N.iter=100, prefix=substitute(x)) {
+  if ( class(x) == "formula" ) f = x
+  else f = as.list(x$call)$formula
+  mse.test = numeric(N.iter)
+  mse.train = numeric(N.iter*N.xval)
+  
+  for ( iter in 1:N.iter ) {
+    grps = sample( (1:nrow(data))  %% N.xval+1 )
+    test.residuals = numeric()
+    for ( i in 1:N.xval ) {
+      data.test = data[grps == i,] # Set group i as train
+      data.train = data[grps != i,] # Set the rest as train
+      M = lm(f, data=data.train, na.action="na.exclude")
+      M.predicted = predict(M, newdata=data.test)
+      r = M.predicted - data.test[,1] # Outcome (should be first column)
+      test.residuals = c(test.residuals, r^2)
+      mse.train[(iter-1)*N.xval+i] = sum(M$residuals^2, na.rm=T)/sum(!is.na(M$residuals))
+    }
+    mse.test[iter] = mean(test.residuals, na.rm=T)
+  }
+  l = list(MSE.train=mse.train, MSE.test=mse.test)
+  names(l) = c("train", "test")
+return(l)
+}
+
+dfTmp <- NULL
+
+# Try each method available in regsubsets to select the best model of each size:
+for ( jSelect in Methods ) {
+  rsRes <- regsubsets(Y.house.price.of.unit.area~., houseData, method=jSelect)
+  s = summary(rsRes)
+  mse = list()
+  mean.mse = numeric()
+  
+  # Calculate test error for cross-validation for each number of variables using xval from above
+  for ( i in 1:6 ) {
+    l = xval(Y.house.price.of.unit.area~., data=houseData[s$which[i,]], prefix=i)
+    mean.mse[i] = mean(l[[2]])
+    dfTmp <- rbind(dfTmp,data.frame(sel=jSelect,vars=i,mse=l))
+  }
+}
+
+# Plot MSEs by training/test, number of variables and selection method:
+dfTmp.tidy = dfTmp %>% gather(key, mse, -c(sel, vars)) %>% separate(key, c("extra column","trainTest"), "\\.") # mse.train and mse.test become mse and train/test
+ggplot(dfTmp.tidy,aes(x=factor(vars),y=mse,color=sel)) + geom_boxplot()+facet_wrap(~trainTest)
+
+## Do the same for log transformed variables
+dfTmp <- NULL
+
+# Try each method available in regsubsets to select the best model of each size:
+for ( jSelect in Methods ) {
+  rsResLog <- regsubsets(Y.house.price.of.unit.area~., houseDataLog, method=jSelect)
+  sLog = summary(rsResLog)
+  mseLog = list()
+  mean.mseLog = numeric()
+  
+  # Calculate test error for cross-validation for each number of variables using xval from above
+  for ( i in 1:6 ) {
+    lLog = xval(Y.house.price.of.unit.area~., data=houseDataLog[sLog$which[i,]], prefix=i)
+    mean.mseLog[i] = mean(lLog[[2]])
+    dfTmp <- rbind(dfTmp,data.frame(sel=jSelect,vars=i,mseLog=lLog))
+  }
+}
+
+# Plot MSEs by training/test, number of variables and selection method:
+dfTmp.tidy = dfTmp %>% gather(key, mseLog, -c(sel, vars)) %>% separate(key, c("extra column","trainTest"), "\\.") # mse.train and mse.test become mse and train/test
+ggplot(dfTmp.tidy,aes(x=factor(vars),y=mseLog,color=sel)) + geom_boxplot()+facet_wrap(~trainTest)
+```
+
+
+# Sub-problem 5: variable selection by lasso (15 points)
+
+*Use regularized approach (i.e. lasso) to model property valuation.  Compare resulting models (in terms of number of variables and their effects) to those selected in the previous two tasks (by `regsubsets` and resampling), comment on differences and similarities among them.*
+
+<span style="color:blue">Lasso regression is performed below. Minimum MSE was achieved at a lambda of 0.1267784 using 5 variables (longitude was removed), while 1SE away was achieved at a lambda of 2.488712 using 4 variables (additional removal of transaction date). This result is comparable to the results from the previous two sub-problems, where longitude and transaction date were the variables that were deemed least important by `regsubsets`, and 4-5 variables were considered optimal by both `regsubsets` and resampling.</span>
+
+<span style="color:blue">For log-transformed variables, all 6 variables were included by lasso regression for minimum MSE and 5 variables for 1SE away. This matches what was found by `regsubsets` and minimizing cp value but is greater than 4-5 variables found using cross-validation.</span>
+
+```{r lasso, fig.width=4, fig.height=3}
+# Prepare matrices for glmnet
+# -1 to get rid of intercept that glmnet knows to include:
+x <- model.matrix(Y.house.price.of.unit.area~., houseData)[,-1]
+y <- houseData[,"Y.house.price.of.unit.area"]
+
+# Perform lasso regression and cross-validation
+lassoRes <- glmnet(x,y,alpha=1)
+# plot(lassoRes)
+cvLassoRes <- cv.glmnet(x,y,alpha=1)
+plot(cvLassoRes)
+# cvLassoRes$lambda.min # 0.08738346
+# cvLassoRes$lambda.1se # 2.488712
+
+# Coefficient values at cross-validation minimum MSE and that 1SE away
+predict(lassoRes,type="coefficients",s=cvLassoRes$lambda.min)
+predict(lassoRes,type="coefficients",s=cvLassoRes$lambda.1se)
+
+## Do the same for log transformed variables
+# Prepare matrices for glmnet
+# -1 to get rid of intercept that glmnet knows to include:
+xLog <- model.matrix(Y.house.price.of.unit.area~., houseDataLog)[,-1]
+yLog <- houseDataLog[,"Y.house.price.of.unit.area"]
+
+# Perform lasso regression and cross-validation
+lassoResLog <- glmnet(xLog,yLog,alpha=1)
+# plot(lassoResLog)
+cvLassoResLog <- cv.glmnet(xLog,yLog,alpha=1)
+plot(cvLassoResLog)
+# cvLassoResLog$lambda.min # 0.001193214
+# cvLassoResLog$lambda.1se # 0.03729648
+
+# Coefficient values at cross-validation minimum MSE and that 1SE away
+predict(lassoResLog,type="coefficients",s=cvLassoResLog$lambda.min)
+predict(lassoResLog,type="coefficients",s=cvLassoResLog$lambda.1se)
+```
+
+
+
+# Extra points problem: using higher order terms (5 points)
+
+*Evaluate the impact of adding non-linear terms to the model.  Describe which terms, if any, warrant addition to the model and what is the evidence supporting their inclusion as well as the effect of their incorporation on model coefficients and error.*
+
+
+# Extra points problem: using clusters instead of latitude/longitude (15 points)
+
+*From the inspection of latitude and longitude attributes of this dataset you may have already noticed that they are distributed fairly unevenly (likely reflecting population density in the area represented by this data).  Consequently, one may argue that using these two attributes as continuous predictors for the purposes of modeling is poorly justified and the resulting corresponding model coefficients are hardly indicative of change in property valuation with one unit of change in latitude/longitude values.  This extra points problem invites you to use K-means clustering in the space of these two attributes to assign observations to progressively increasing number of clusters, use resulting cluster id as a factor attribute for the purposes of modeling instead of actual longitude/latitude coordinates and evaluate the impact of this transformation on model performance metrics.  Compare this approach to the stratification by district employed in [Ye & Hsu, 2018](https://canvas.harvard.edu/files/7587373/download?download_frd=1) available at our course website in canvas.*
+
+<span style="color:blue">Using K-means clustering, clusters from size 2 to 9 were tested on latitude/longitude values. Using cluster id as a factor attribute for regression, we find that statistical signficance of the clusters as predictors declines after 5 clusters. From 3 to 5 clusters, while the rest of the clusters are significant at a 0.001 level, there is one cluster that is found to be not significant (the bottom right one in the plots below). The adjusted $R^2$ and residual standard error are maximized/minimized at 4 clusters, going from 0.5762 and 8.858 with the original untransformed model to 0.6396 and 8.168 with the 4 factorized clusters. To save space, output for summary statistics for only 4 clusters is shown, with diagnostic plots similar to what was observed in sub-problem 1. The clusters using K-means clustering somewhat resemble the contours shown in the forecast model from the paper, with 2 of the clusters matching the dark blue and light blue regions in the paper. The contours become more complex toward the center where most of the points lie (red region in my graph of 4 clusters), which we are not able to model using k-means clustering unless another metric is used.</span>
+
+```{r clusters}
+# Loop over values of clusters
+oldpar = par(mfrow=c(2,4)) # 2 by 4 graphing region
+clusters = NULL
+for (i.nclusters in 2:9) {
+  # Set RNG seed
+  set.seed(1)
+  
+  # Perform K-means clustering with i.nclusters clusters and nstart of 100
+  cluster = kmeans(houseData[6:7], centers=i.nclusters, nstart=100)
+  
+  # Color by cluster
+  plot(houseData[7:6], col=cluster$cluster, main=paste0(i.nclusters, " Clusters"), pch=16, cex=0.4)
+  
+  # Perform linear regression with cluster id as a factor
+  clusters = cbind(clusters, cluster$cluster)
+}
+par(oldpar)
+
+for (i in 1:ncol(clusters)) {
+  # Perform linear regression with cluster id as a factor
+  houseData$Cluster = as.factor(clusters[,i])
+  templm = lm(houseData[c(-6,-7)]) # Don't use latitude and longitude
+  
+  # Output summary statistics for each number of cluster
+  # print(summary(templm))
+}
+
+# Look specifically at 4 clusters
+houseData$Cluster = as.factor(clusters[,3])
+templm = lm(houseData[c(-6,-7)]) # Don't use latitude and longitude
+
+# Output summary statistics
+print(summary(templm))
+
+# Plot diagnostic plots
+oldpar = par(mfrow=c(2,2)) # 2 by 2 graphing region
+plot(templm)
+par(oldpar)
+```
+
